@@ -3,9 +3,12 @@ name = "chatree-server"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+codegen-units = 1
+
 [dependencies]
 axum = { version = "0.8.4", features = ["ws"] }
-tokio = { version = "1.46.1", features = ["full"] }
+tokio = { version = "1.47.0", features = ["full"] }
 futures = "0.3.31"
 tokio-tungstenite = "0.27.0"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
@@ -15,5 +18,8 @@ jsonwebtoken = "9.3.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3"
 timedmap = "1.0.2"
-diesel = { version = "2.2.12", features = ["sqlite", "extras"] }
-deadpool-diesel = { version = "0.6.1", features = ["sqlite", "rt_tokio_1", "serde", "tracing"]}
+diesel = { version = "2.2.12", features = ["postgres", "serde_json", "chrono", "uuid"] }
+deadpool-diesel = { version = "0.6.1", features = ["postgres", "rt_tokio_1", "serde", "tracing"]}
+chrono = { version = "0.4.41", features = ["serde"] }
+ferroid = { version = "0.5.5", features = ["async-tokio", "snowflake"] }
+machine-uid = "0.5.3"
