@@ -183,7 +183,6 @@ dependencies = [
  "tokio-tungstenite 0.27.0",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -331,7 +330,6 @@ dependencies = [
  "itoa",
  "pq-sys",
  "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -394,6 +392,7 @@ checksum = "43ef35936ad84c65a5941d74e139c225ab6f7660303365bd6ef59285a8c0f0a7"
 dependencies = [
  "futures",
  "pin-project-lite",
+ "serde",
  "tokio",
 ]
 
@@ -1444,18 +1443,6 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
-
-[[package]]
-name = "uuid"
-version = "1.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
-dependencies = [
- "getrandom 0.3.3",
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "valuable"
