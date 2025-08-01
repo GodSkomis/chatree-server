@@ -90,5 +90,5 @@ pub async fn websocket(stream: WebSocket, state: Arc<AppState>) {
     let _ = state.tx.send(msg);
 
     // Remove username from map so new clients can take it again.
-    state.clients.write().await.remove(&username);
+    // state.clients.write().await.remove(&username);
 }

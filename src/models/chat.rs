@@ -1,9 +1,27 @@
 use diesel::prelude::{Associations, Identifiable, Insertable, Queryable};
+use diesel_async::RunQueryDsl;
 use serde::Serialize;
 
 use crate::schema::*;
-use super::user::User;
+use super::user
+::User;
 
+async fn test() {
+    use diesel_async::pooled_connection::deadpool::{Object, Pool};
+    use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+    use diesel_async::AsyncPgConnection;
+
+    let pool_config = AsyncDieselConnectionManager::<AsyncPgConnection>::new("TEST");
+    let pool = Pool::builder(pool_config).build().unwrap();
+    let mut conn = pool.get().await.unwrap();
+
+    let n = NewChat { id: 32, name: "DADADA".to_string() };
+    let q: String = diesel::insert_into(chats::table)
+        .values(&n)
+        .returning(chats::name)
+        .get_result(&mut conn)
+        .await.unwrap();
+    }
 
 #[derive(Debug, Clone, Queryable, Identifiable, Serialize)]
 #[diesel(table_name = chats)]

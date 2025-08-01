@@ -30,7 +30,6 @@ diesel::table! {
         username -> Text,
         name -> Text,
         hashed_password -> Text,
-        created_at -> Timestamp,
         status -> Nullable<Text>,
         bio -> Nullable<Text>,
         is_banned -> Nullable<Bool>,

@@ -1,20 +1,29 @@
+use axum::response::IntoResponse;
+use axum::routing::post;
 use axum::{
     routing::get,
     Router,
 };
+
+use diesel::ConnectionResult;
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
+use tracing::Level;
 use std::{
-    collections::HashMap,
-    sync::Arc,
+    collections::HashMap, env, sync::Arc
 };
 use tokio::sync::{RwLock, broadcast};
+use dotenv::dotenv;
 
-use crate::{app_state::AppState, cache::cache::TimedCache};
+use crate::models::AppPool;
+use crate::{app_state::AppState, cache::cache::TimedCache, models::prelude::SnowflakeGenerator};
 
 mod websocket;
 mod app_state;
 mod cache;
 mod auth;
+pub mod schema;
+pub mod models;
 pub mod settings;
 
 
@@ -37,35 +46,114 @@ struct Claims {
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
+    tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG) // Уровень логирования (например, INFO)
+        .init();
     // let subscriber = FmtSubscriber::new();
-    let subscriber = tracing_subscriber::fmt()
-        .compact()
-        // .with_file(true)
-        // .with_line_number(true)
-        // .with_thread_ids(true)
-        // .with_target(false)
-        .finish();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    // let subscriber = tracing_subscriber::fmt()
+    //     .compact()
+    //     // .with_file(true)
+    //     // .with_line_number(true)
+    //     // .with_thread_ids(true)
+    //     // .with_target(false)
+    //     .finish();
+    // tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let (tx, _rx) = broadcast::channel(100);
+    let pool = create_pg_pool();
 
     let state = AppState {
         clients: Arc::new(RwLock::new(HashMap::new())),
         tickets: Arc::new(RwLock::new(TimedCache::new())),
         users: Arc::new(RwLock::new(HashMap::new())),
-        tx: tx
+        snowflake_generator: Arc::new(SnowflakeGenerator::new()),
+        tx: tx,
+        pool: pool,
     };
+
     let app = Router::new()
         // .route("/ws", get(ws_handler))
         .route("/ws", get(websocket::websocket_handler))
+        .route("/signup", post(auth::auth::sign_up))
+        .route("/login", post(auth::auth::login))
+        .route("/ping", get(ping))
         .with_state(Arc::new(state));
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000")
         .await
         .unwrap();
+    
     tracing::debug!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
+
+
+use diesel_async::pooled_connection::deadpool::Pool;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::AsyncPgConnection;
+
+
+// Local pool
+fn create_pg_pool() -> AppPool {
+    let database_url = env::var("DATABASE_URL").unwrap();
+    let max_size = 6;
+    let pool_manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+    Pool::builder(pool_manager).max_size(max_size).build().unwrap()
+}
+
+
+async fn ping() -> impl IntoResponse {
+    "Pong!"
+}
+
+
+use futures::FutureExt;
+
+
+fn establish_connection(config: &str) -> BoxFuture<ConnectionResult<AsyncPgConnection>> {
+    let fut = async {
+        // We first set up the way we want rustls to work.
+        let rustls_config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_certs())
+            .with_no_client_auth();
+        let tls = tokio_postgres_rustls::MakeRustlsConnect::new(rustls_config);
+        let (client, conn) = tokio_postgres::connect(config, tls)
+            .await
+            .map_err(|e| ConnectionError::BadConnection(e.to_string()))?;
+        tokio::spawn(async move {
+            if let Err(e) = conn.await {
+                eprintln!("Database connection: {e}");
+            }
+        });
+        AsyncPgConnection::try_from(client).await
+    };
+    fut.boxed()
+}
+
+fn root_certs() -> rustls::RootCertStore {
+    let mut roots = rustls::RootCertStore::empty();
+    let certs = rustls_native_certs::load_native_certs().expect("Certs not loadable!");
+    // let certs = certs.into_iter().map(|cert| cert.to_owned()).collect();
+    roots.add_parsable_certificates(&certs);
+    roots
+}
+
+
+// fn create_pg_pool() -> Pool<AsyncPgConnection> {
+// use diesel_async::pooled_connection::deadpool::Pool;
+// use diesel_async::{AsyncPgConnection, pooled_connection::AsyncDieselConnectionManager};
+
+//     let max_size = 6;
+//     let database_url = env::var("DATABASE_URL").unwrap();
+//     let manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
+//     Pool::builder(manager)
+//         .max_size(max_size)
+//         .build()
+//         .unwrap()
+// }
 
 // async fn ws_handler(
 //     ws: WebSocketUpgrade,

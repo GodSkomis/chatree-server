@@ -1,12 +1,12 @@
-use diesel::prelude::{Identifiable, Insertable, Queryable};
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::users;
+use crate::schema;
 
 
-
-#[derive(Debug, Clone, Queryable, Identifiable, Serialize)]
-#[diesel(table_name = users)]
+#[derive(Debug, Clone, Queryable, Identifiable, Serialize, Selectable)]
+#[diesel(table_name = schema::users)]
 pub struct User {
     pub id: i64,
     pub username: String,
@@ -20,10 +20,23 @@ pub struct User {
 
 
 #[derive(Debug, Insertable, Deserialize)]
-#[diesel(table_name = users)]
+#[diesel(table_name = schema::users)]
 pub struct NewUser {
     pub id: i64,
     pub username: String,
     pub name: String,
     pub hashed_password: String
+}
+
+
+impl NewUser {
+    pub async fn insert(&self, pool: &super::AppPool) -> i64 {
+        let mut conn = pool.get().await.unwrap();
+        let user_id: i64 = diesel::insert_into(schema::users::table)
+            .values(self)
+            .returning(schema::users::id)
+            .get_result(&mut conn)
+            .await.unwrap();
+        user_id
+    }
 }
