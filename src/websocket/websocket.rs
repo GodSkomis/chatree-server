@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{extract::{ws::{Message, Utf8Bytes, WebSocket}, State, WebSocketUpgrade}, response::IntoResponse};
-use futures::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt};
 
 use crate::app_state::AppState;
 

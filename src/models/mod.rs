@@ -1,12 +1,19 @@
-use diesel_async::pooled_connection::deadpool::Pool;
-use diesel_async::AsyncPgConnection;
+use sqlx::{Pool, Postgres};
 
 pub mod user;
 pub mod chat;
 pub mod message;
 
 
-pub type AppPool = Pool<AsyncPgConnection>;
+pub type AppPool = Pool<Postgres>;
+
+
+pub mod errors {
+    pub enum ModelError {
+        UnexpectedError(String),
+        ClientError(String)
+    }
+}
 
 
 pub mod prelude {

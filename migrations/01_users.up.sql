@@ -1,6 +1,6 @@
 
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id BIGINT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -9,6 +9,6 @@ CREATE TABLE users (
     status TEXT DEFAULT NULL,
     bio TEXT DEFAULT NULL,
 
-    is_banned BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE
+    is_banned BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );

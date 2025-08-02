@@ -13,3 +13,7 @@ pub const TICKET_LIFETIME: usize = 5 * 60;// seconds
 
 // JWT
 pub const JWT_SECRET: &[u8] = b"supersecret";
+
+
+// Postgres
+pub const MAX_CONNECTIONS: u32 = 5;

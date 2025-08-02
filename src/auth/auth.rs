@@ -1,11 +1,11 @@
-use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{fmt::format, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use rand::{self, distr::Alphanumeric, Rng};
-use axum::{extract::State, http::HeaderMap, response::{ErrorResponse, IntoResponse}, Json};
+use axum::{extract::State, http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
-use crate::{app_state::AppState, auth::password::generate_password_hash, cache::cache::Cache, models::user::{NewUser, User}, settings::{JWT_SECRET, TICKET_LENGTH, TICKET_LIFETIME}};
+use crate::{app_state::AppState, auth::password::generate_password_hash, cache::cache::Cache, core::ErrorResponse, models::{errors::ModelError, user::{NewUser, User}}, settings::{JWT_SECRET, TICKET_LENGTH, TICKET_LIFETIME}};
 
 
 #[derive(Debug, Deserialize)]
@@ -51,16 +51,23 @@ pub struct JWTResponse {
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Json(form): Json<LoginForm>,
-) -> impl IntoResponse {
-    // let user: User = match get_user() {
-    //     Some(_user) => _user,
-    //     None => return Json(ErrorResponse::from("User not found"))
-    // };
+) -> Result<Json<JWTResponse>, Response> {
 
-    // let jwt = JWToken::new(user.id);
-    
-    // Json(JWTResponse { token: token.encode() })
-    Json(JWTResponse { token: "OK".to_string() })
+    match User::authorize(form.username.clone(), &state.pool).await {
+        Ok(_dto) => match _dto {
+            Some(dto) => {
+                let jwt = JWToken::new(dto.id);
+                Ok(Json(JWTResponse { token: jwt.encode() }))
+            },
+            None => {
+                let error = Json(ErrorResponse {
+                    error: format!("User with given username ({}) not found", form.username)
+                });
+                Err((StatusCode::BAD_REQUEST, error).into_response())
+            }
+        },
+        Err(err) => Err(ModelError::into_error_response(err, None, None))
+    }
 }
 
 
@@ -76,11 +83,16 @@ pub async fn sign_up(
         username: form.username,
         name: form.name,
         hashed_password: hashed_password,
+        status: None,
+        bio: None
     };
-    let new_user_id = new_user.insert(&state.pool).await;
+    let new_user_id = match new_user.insert(&state.pool).await {
+        Ok(_user_id) => _user_id,
+        Err(err) => return Err(ModelError::into_error_response(err, None, None))
+    };
     let token = JWToken::new(new_user_id);
     tracing::debug!("NewUser: {}", new_user_id);
-    Json(JWTResponse { token: token.encode() })
+    Ok(Json(JWTResponse { token: token.encode() }))
 }
 
 
