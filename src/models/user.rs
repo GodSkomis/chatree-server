@@ -4,9 +4,11 @@ use sqlx::postgres::PgDatabaseError;
 use crate::models::errors::ModelError;
 
 
+pub type UserID = i64;
+
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct User {
-    pub id: i64,
+    pub id: UserID,
     pub username: String,
     pub name: String,
     pub hashed_password: String,
@@ -18,12 +20,12 @@ pub struct User {
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserAthorizeDTO {
-    pub id: i64,
+    pub id: UserID,
     pub hashed_password: String
 }
 
 impl User {
-    pub async fn find(user_id: i64, pool: &super::AppPool) -> Result<Option<Self>, ModelError> {
+    pub async fn find(user_id: UserID, pool: &super::AppPool) -> Result<Option<Self>, ModelError> {
         let result = sqlx::query_as!(
             User,
             "SELECT * FROM users WHERE id = $1",
@@ -62,7 +64,7 @@ impl User {
 
 #[derive(Debug, Deserialize)]
 pub struct NewUser {
-    pub id: i64,
+    pub id: UserID,
     pub username: String,
     pub name: String,
     pub hashed_password: String,

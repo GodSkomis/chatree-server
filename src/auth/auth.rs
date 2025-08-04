@@ -1,11 +1,18 @@
-use std::{fmt::format, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
-use rand::{self, distr::Alphanumeric, Rng};
+use std::sync::Arc;
+use rand::{distr::Alphanumeric, Rng};
 use axum::{extract::State, http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json};
-use jsonwebtoken::{encode, EncodingKey, Header};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::task;
 
-use crate::{app_state::AppState, auth::password::{generate_password_hash, verify_password}, cache::cache::Cache, core::ErrorResponse, models::{errors::ModelError, user::{NewUser, User}}, settings::{JWT_SECRET, TICKET_LENGTH, TICKET_LIFETIME}};
+use crate::{
+    app_state::AppState,
+    auth::{jwt_authorization::{JWTResponse, JWToken},
+    password::{generate_password_hash, verify_password}},
+    cache::cache::Cache,
+    core::ErrorResponse,
+    models::{errors::ModelError,user::{NewUser, User}}, 
+    settings::TICKET_LENGTH
+};
 
 
 #[derive(Debug, Deserialize)]
@@ -21,55 +28,11 @@ pub struct LoginForm {
     pub password: String
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JWToken {
-    user_id: i64,
-    exp: usize,
-}
-
-
-impl JWToken {
-    fn new(user_id: i64) -> Self {
-        Self {
-            user_id: user_id,
-            exp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize + TICKET_LIFETIME
-        }
-    }
-
-    fn encode(&self) -> String {
-        encode(&Header::default(), &self, &EncodingKey::from_secret(JWT_SECRET)).unwrap()
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct JWTResponse {
-    token: String
-}
-
-
 #[axum::debug_handler]
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Json(form): Json<LoginForm>,
 ) -> Result<Json<JWTResponse>, Response> {
-
-    // let dto = match User::authorize(form.username.clone(), &state.pool).await {
-    //     Ok(_dto) => match _dto {
-    //         Some(dto) => {
-    //             let jwt = JWToken::new(dto.id);
-    //             Ok(Json(JWTResponse { token: jwt.encode() }))
-    //         },
-    //         None => {
-    //             let error = Json(ErrorResponse {
-    //                 error: format!("User with given username ({}) not found", form.username)
-    //             });
-    //             Err((StatusCode::BAD_REQUEST, error).into_response())
-    //         }
-    //     },
-    //     Err(err) => Err(ModelError::into_error_response(err, None, None))
-    // };
-
-    // dto
 
     let dto = User::authorize(form.username.clone(), &state.pool)
         .await
@@ -124,6 +87,7 @@ pub async fn ticket(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>
 ) -> String {
+    
     let ticket = task::spawn_blocking(|| generate_random_ticket()).await.unwrap();
     {
         let tickets = state.tickets.write().await;
