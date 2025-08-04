@@ -5,7 +5,7 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
-use crate::{app_state::AppState, auth::password::generate_password_hash, cache::cache::Cache, core::ErrorResponse, models::{errors::ModelError, user::{NewUser, User}}, settings::{JWT_SECRET, TICKET_LENGTH, TICKET_LIFETIME}};
+use crate::{app_state::AppState, auth::password::{generate_password_hash, verify_password}, cache::cache::Cache, core::ErrorResponse, models::{errors::ModelError, user::{NewUser, User}}, settings::{JWT_SECRET, TICKET_LENGTH, TICKET_LIFETIME}};
 
 
 #[derive(Debug, Deserialize)]
@@ -53,21 +53,45 @@ pub async fn login(
     Json(form): Json<LoginForm>,
 ) -> Result<Json<JWTResponse>, Response> {
 
-    match User::authorize(form.username.clone(), &state.pool).await {
-        Ok(_dto) => match _dto {
-            Some(dto) => {
-                let jwt = JWToken::new(dto.id);
-                Ok(Json(JWTResponse { token: jwt.encode() }))
-            },
-            None => {
-                let error = Json(ErrorResponse {
-                    error: format!("User with given username ({}) not found", form.username)
-                });
-                Err((StatusCode::BAD_REQUEST, error).into_response())
-            }
-        },
-        Err(err) => Err(ModelError::into_error_response(err, None, None))
+    // let dto = match User::authorize(form.username.clone(), &state.pool).await {
+    //     Ok(_dto) => match _dto {
+    //         Some(dto) => {
+    //             let jwt = JWToken::new(dto.id);
+    //             Ok(Json(JWTResponse { token: jwt.encode() }))
+    //         },
+    //         None => {
+    //             let error = Json(ErrorResponse {
+    //                 error: format!("User with given username ({}) not found", form.username)
+    //             });
+    //             Err((StatusCode::BAD_REQUEST, error).into_response())
+    //         }
+    //     },
+    //     Err(err) => Err(ModelError::into_error_response(err, None, None))
+    // };
+
+    // dto
+
+    let dto = User::authorize(form.username.clone(), &state.pool)
+        .await
+        .map_err(|err| ModelError::into_error_response(err, None, None))?;
+
+    let dto = dto.ok_or_else(|| {
+        let error = Json(ErrorResponse {
+            error: format!("User with given username ({}) not found", form.username),
+        });
+        (StatusCode::BAD_REQUEST, error).into_response()
+    })?;
+
+    if !verify_password(form.password, dto.hashed_password) {
+        let error = Json(ErrorResponse {
+            error: "Wrong password".to_string()
+        });
+        return Err((StatusCode::UNAUTHORIZED, error).into_response())
     }
+
+    let jwt = JWToken::new(dto.id);
+    Ok(Json(JWTResponse { token: jwt.encode() }))
+    
 }
 
 

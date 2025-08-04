@@ -16,13 +16,11 @@ pub mod password {
         argon2.hash_password(password.as_bytes(), &salt).unwrap().to_string()
     }
 
-    pub fn verify_password(request_password_hash: String, database_password_hash: String) -> bool {
+    pub fn verify_password(request_password: String, database_password_hash: String) -> bool {
         let parsed_hash = PasswordHash::new(&database_password_hash).unwrap();
 
-        let argon2 = Argon2::default();
-
-        argon2
-            .verify_password(request_password_hash.as_bytes(), &parsed_hash)
+        Argon2::default()
+            .verify_password(request_password.as_bytes(), &parsed_hash)
             .is_ok()
     }
 }
