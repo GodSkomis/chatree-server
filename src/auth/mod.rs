@@ -80,9 +80,9 @@ pub mod jwt_authorization {
     }
 
     
-    struct AuthorizeUser(TokenData<JWToken>);
+    struct JWTAuthorize(TokenData<JWToken>);
     
-    impl<S> FromRequestParts<S> for AuthorizeUser
+    impl<S> FromRequestParts<S> for JWTAuthorize
     where
         S: Send + Sync,
     {
@@ -99,7 +99,7 @@ pub mod jwt_authorization {
             let jwt = JWToken::verify(token)
                 .map_err(|_| (StatusCode::UNAUTHORIZED, "`authorization` header contains invalid token"))?;
 
-            Ok(AuthorizeUser(jwt))
+            Ok(JWTAuthorize(jwt))
         }
     }
 }
