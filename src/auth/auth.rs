@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use rand::{distr::Alphanumeric, Rng};
-use axum::{extract::State, http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json};
+use axum::{extract::{Query, State}, http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json};
 use serde::Deserialize;
 use tokio::task;
 
 use crate::{
     app_state::AppState,
-    auth::{jwt_authorization::{JWTResponse, JWToken},
+    auth::{jwt_authorization::{JWTAuthorize, JWTResponse, JWToken},
     password::{generate_password_hash, verify_password}},
     cache::cache::Cache,
     core::ErrorResponse,
@@ -53,7 +53,9 @@ pub async fn login(
     }
 
     let jwt = JWToken::new(dto.id);
-    Ok(Json(JWTResponse { token: jwt.encode() }))
+    let token = jwt.encode();
+    tracing::debug!("JWT ({}): `{}`", dto.id, token);
+    Ok(Json(JWTResponse { token: token }))
     
 }
 
@@ -84,14 +86,14 @@ pub async fn sign_up(
 
 
 pub async fn ticket(
-    headers: HeaderMap,
+    JWTAuthorize(jwt): JWTAuthorize,
     State(state): State<Arc<AppState>>
 ) -> String {
     
     let ticket = task::spawn_blocking(|| generate_random_ticket()).await.unwrap();
     {
         let tickets = state.tickets.write().await;
-        // tickets.set(ticket.clone(), user_id, None);
+        tickets.set(ticket.clone(), jwt.claims.user_id, None);
     }
 
     ticket
@@ -108,16 +110,19 @@ fn generate_random_ticket() -> String {
 }
 
 
-pub async fn validate_ticket(
+#[derive(serde::Deserialize)]
+pub struct TicketQuery {
     ticket: String,
+}
+
+
+pub async fn revoke_ticket (
+    Query(ticket_query): Query<TicketQuery>,
     State(state): State<Arc<AppState>>
-) -> bool {
-
+) -> Response {
     let tickets = state.tickets.write().await;
-    if let None = tickets.get(&ticket) {
-        return false
+    match tickets.remove(&ticket_query.ticket) {
+        Some(_) => (StatusCode::OK, Json(ErrorResponse { error: format!("Ticket `{}` has been successfully revoked", &ticket_query.ticket) })).into_response(),
+        None => (StatusCode::BAD_REQUEST, Json(ErrorResponse{ error: "Ticket was not reserved".to_string()})).into_response()
     }
-
-    tickets.remove(&ticket).unwrap();
-    true
 }

@@ -79,6 +79,8 @@ async fn main() {
         .route("/ws", get(websocket::websocket_handler))
         .route("/signup", post(auth::auth::sign_up))
         .route("/login", post(auth::auth::login))
+        .route("/ticket", post(auth::auth::ticket))
+        .route("/ticket/revoke", post(auth::auth::revoke_ticket))
         .route("/ping", get(ping))
         .with_state(Arc::new(state));
 

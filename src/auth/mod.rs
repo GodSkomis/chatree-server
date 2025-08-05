@@ -29,27 +29,24 @@ pub mod password {
 
 
 pub mod jwt_authorization {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{env, time::{SystemTime, UNIX_EPOCH}};
 
     use axum::{
         extract::FromRequestParts,
-        routing::get,
-        Router,
         http::{
             StatusCode,
-            header::{HeaderValue, AUTHORIZATION},
             request::Parts,
         },
     };
     use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
     use serde::{Deserialize, Serialize};
     
-    use crate::{models::user::UserID, settings::{JWT_SECRET, TICKET_LIFETIME}};
+    use crate::{models::user::UserID, settings::{AUTHORIZATION_HEADER, TICKET_LIFETIME}};
 
-
+    
     #[derive(Debug, Serialize, Deserialize)]
     pub struct JWToken {
-        pub user_id: i64,
+        pub user_id: UserID,
         exp: usize,
     }
 
@@ -57,7 +54,7 @@ pub mod jwt_authorization {
         pub fn verify(token: &str) -> Result<TokenData<Self>, jsonwebtoken::errors::Error> {
             decode::<Self>(
                 token,
-                &DecodingKey::from_secret(JWT_SECRET),
+                &DecodingKey::from_secret(env::var("JWT_SECRET").unwrap().as_bytes()),
                 &Validation::default()
             )
         }
@@ -70,7 +67,7 @@ pub mod jwt_authorization {
         }
 
         pub fn encode(&self) -> String {
-            encode(&Header::default(), &self, &EncodingKey::from_secret(JWT_SECRET)).unwrap()
+            encode(&Header::default(), &self, &EncodingKey::from_secret(env::var("JWT_SECRET").unwrap().as_bytes())).unwrap()
         }
     }
 
@@ -80,7 +77,7 @@ pub mod jwt_authorization {
     }
 
     
-    struct JWTAuthorize(TokenData<JWToken>);
+    pub struct JWTAuthorize(pub TokenData<JWToken>);
     
     impl<S> FromRequestParts<S> for JWTAuthorize
     where
@@ -90,14 +87,17 @@ pub mod jwt_authorization {
     
         async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
 
-            let token_header = parts.headers.get(AUTHORIZATION)
-                .ok_or((StatusCode::UNAUTHORIZED, "`authorization` header not found"))?;
+            let token_header = parts.headers.get(AUTHORIZATION_HEADER)
+                .ok_or((StatusCode::UNAUTHORIZED, "`Authorization` header not found"))?;
 
             let token = token_header.to_str()
-                .map_err(|_| (StatusCode::UNAUTHORIZED, "`authorization` header is not valid UTF-8"))?;
+                .map_err(|_| (StatusCode::UNAUTHORIZED, "`Authorization` header is not valid UTF-8"))?;
             
             let jwt = JWToken::verify(token)
-                .map_err(|_| (StatusCode::UNAUTHORIZED, "`authorization` header contains invalid token"))?;
+                .map_err(|err| {
+                    tracing::debug!("Failed to parse jwt. Error: {:?}\nToken: `{}`", err, token);
+                    (StatusCode::UNAUTHORIZED, "`Authorization` header contains invalid token")
+                })?;
 
             Ok(JWTAuthorize(jwt))
         }
