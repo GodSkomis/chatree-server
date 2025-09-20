@@ -26,6 +26,78 @@ pub mod password {
 }
 
 
+pub mod ticket {
+    use rand::{distr::Alphanumeric, Rng};
+    use tokio::{sync::RwLock, task};
+
+    use crate::{cache::cache::{Cache, TimedCache}, models::user::UserID, settings::TICKET_LENGTH};
+
+    
+    #[derive(serde::Deserialize)]
+    pub struct TicketQuery {
+        pub ticket: String,
+    }
+    pub struct TicketService(Tickets);
+    
+    type Tickets = RwLock<TimedCache<String, UserID>>;
+
+    impl Default for TicketService {
+        fn default() -> Self {
+            Self(RwLock::new(TimedCache::new()))
+        }
+    }
+
+    impl TicketService {
+        pub async fn generate(&self, user_id: UserID) -> String {
+            let ticket = task::spawn_blocking(|| {
+                let ticket: String = rand::rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(TICKET_LENGTH)
+                    .map(char::from)
+                    .collect();
+                ticket
+            }).await.unwrap();
+
+            {
+                let storage = self.0.write().await;
+                storage.set(ticket.clone(), user_id, None);
+            }
+            
+            ticket
+        }
+
+        pub async fn verify(&self, ticket: &String) -> Option<UserID> {
+            let storage = self.0.read().await;
+            storage.get(ticket)
+        }
+
+        pub async fn remove(&self, ticket: &String) -> Option<UserID> {
+            let storage = self.0.write().await;
+            storage.remove(&ticket)
+        }
+
+        pub async fn validated_remove(&self, user_id: UserID, ticket: &String) -> Result<(), &str>  {
+            let storage = self.0.write().await;
+            let ticket_owner_id = storage.get(ticket)
+                .ok_or("Ticket not found")?;
+            if user_id != ticket_owner_id {
+                return Err("Token does not belong to the current use")
+            };
+            storage.remove(ticket)
+                .ok_or({
+                    tracing::error!(
+                        "`validated_remove' (user_id: `{}`, ticket: `{}`)\nError: 'storage.remove() returned None, but previous validations passed successfully'",
+                        user_id,
+                        ticket
+                    );
+                    "Internal error"
+            })?;
+            Ok(())
+        }
+            
+    }
+
+}
 
 
 pub mod jwt_authorization {

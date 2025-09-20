@@ -1,49 +1,77 @@
 use std::sync::Arc;
 
-use axum::{extract::{ws::{Message, Utf8Bytes, WebSocket}, State, WebSocketUpgrade}, response::IntoResponse};
+use axum::{extract::{ws::{Message, Utf8Bytes, WebSocket}, Query, State, WebSocketUpgrade}, http::StatusCode, response::IntoResponse};
 use futures_util::{SinkExt, StreamExt};
 
-use crate::app_state::AppState;
+use crate::{app_state::AppState, auth::ticket::TicketQuery, models::user::UserID};
 
 
 
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
+    Query(ticket_query): Query<TicketQuery>,
     State(state): State<Arc<AppState>>
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| websocket(socket, state))
+    let user_id = match state.tickets.verify(&ticket_query.ticket).await{
+        Some(_user_id) => _user_id,
+        None => return (StatusCode::UNAUTHORIZED, "Invalid ticket").into_response()
+    };
+    ws.on_upgrade(move |socket| websocket(socket, state, user_id))
 }
 
 // This function deals with a single websocket connection, i.e., a single
 // connected client / user, for which we will spawn two independent tasks (for
 // receiving / sending chat messages).
-pub async fn websocket(stream: WebSocket, state: Arc<AppState>) {
+pub async fn websocket(stream: WebSocket, state: Arc<AppState>, user_id: UserID) {
     // By splitting, we can send and receive at the same time.
     let (mut sender, mut receiver) = stream.split();
 
-    // Username gets set in the receive loop, if it's valid.
-    let mut username = String::new();
     // Loop until a text message is found.
-    while let Some(Ok(message)) = receiver.next().await {
-        if let Message::Text(name) = message {
-            // If username that is sent by client is not taken, fill username string.
-            // check_username(&state, &mut username, name.as_str());
+    // while let Some(Ok(message)) = receiver.next().await {
+    //     if let Message::Text(text) = message {
+    //         // If username that is sent by client is not taken, fill username string.
+    //         // check_username(&state, &mut username, name.as_str());
 
-            // If not empty we want to quit the loop else we want to quit function.
-            if !username.is_empty() {
-                break;
-            } else {
-                // Only send our client that username is taken.
-                let _ = sender
-                    .send(Message::Text(Utf8Bytes::from_static(
-                        "Username already taken.",
-                    )))
-                    .await;
+    //         // If not empty we want to quit the loop else we want to quit function.
+    //         if !text.is_empty() {
+    //             break;
+    //         } else {
+    //             // Only send our client that username is taken.
+    //             let _ = sender
+    //                 .send(Message::Text(Utf8Bytes::from_static(
+    //                     "Username already taken.",
+    //                 )))
+    //                 .await;
 
-                return;
+    //             return;
+    //         }
+    //     }
+    // }
+
+
+
+    while let Some(Ok(msg)) = receiver.next().await {
+        if let Message::Text(text) = msg {
+            let parsed: Result<WsRequest, _> = serde_json::from_str(&text);
+
+            match parsed {
+                Ok(request) => {
+                    if let Some(handler) = state.handlers.get(&request.method) {
+                        let response = handler(state.clone(), request.data).await;
+                        let response_str = serde_json::to_string(&response).unwrap_or_default();
+                        let _ = sender.send(Message::Binary(response_str.as_bytes())).await;
+                    } else {
+                        let _ = sender.send(Message::Binary("Unknown method".as_bytes())).await;
+                    }
+                }
+                Err(_) => {
+                    let _ = sender.send(Message::Text("Invalid JSON".to_string())).await;
+                }
             }
         }
     }
+
+
 
     // We subscribe *before* sending the "joined" message, so that we will also
     // display it to our client.

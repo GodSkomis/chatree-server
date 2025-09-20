@@ -14,6 +14,7 @@ use std::{
 use tokio::sync::{RwLock, broadcast};
 use dotenv::dotenv;
 
+use crate::auth::ticket::TicketService;
 use crate::models::AppPool;
 use crate::settings::MAX_CONNECTIONS;
 use crate::{app_state::AppState, cache::cache::TimedCache, models::prelude::SnowflakeGenerator};
@@ -26,6 +27,7 @@ pub mod schema;
 pub mod models;
 pub mod settings;
 pub mod core;
+pub mod crypto;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +69,7 @@ async fn main() {
 
     let state = AppState {
         clients: Arc::new(RwLock::new(HashMap::new())),
-        tickets: Arc::new(RwLock::new(TimedCache::new())),
+        tickets: Arc::new(TicketService::default()),
         users: Arc::new(RwLock::new(HashMap::new())),
         snowflake_generator: Arc::new(SnowflakeGenerator::new()),
         tx: tx,

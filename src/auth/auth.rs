@@ -1,17 +1,10 @@
 use std::sync::Arc;
-use rand::{distr::Alphanumeric, Rng};
-use axum::{extract::{Query, State}, http::{HeaderMap, StatusCode}, response::{IntoResponse, Response}, Json};
+use axum::{extract::{Query, State}, http::StatusCode, response::{IntoResponse, Response}, Json};
 use serde::Deserialize;
-use tokio::task;
 
 use crate::{
-    app_state::AppState,
-    auth::{jwt_authorization::{JWTAuthorize, JWTResponse, JWToken},
-    password::{generate_password_hash, verify_password}},
-    cache::cache::Cache,
-    core::ErrorResponse,
-    models::{errors::ModelError,user::{NewUser, User}}, 
-    settings::TICKET_LENGTH
+    app_state::AppState, auth::{jwt_authorization::{JWTAuthorize, JWTResponse, JWToken},
+    password::{generate_password_hash, verify_password}, ticket::TicketQuery}, core::ErrorResponse, models::{errors::ModelError,user::{NewUser, User}}
 };
 
 
@@ -88,41 +81,18 @@ pub async fn sign_up(
 pub async fn ticket(
     JWTAuthorize(jwt): JWTAuthorize,
     State(state): State<Arc<AppState>>
-) -> String {
-    
-    let ticket = task::spawn_blocking(|| generate_random_ticket()).await.unwrap();
-    {
-        let tickets = state.tickets.write().await;
-        tickets.set(ticket.clone(), jwt.claims.user_id, None);
-    }
-
-    ticket
-}
-
-
-fn generate_random_ticket() -> String {
-    let ticket: String = rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(TICKET_LENGTH)
-        .map(char::from)
-        .collect();
-    ticket
-}
-
-
-#[derive(serde::Deserialize)]
-pub struct TicketQuery {
-    ticket: String,
+) -> impl IntoResponse {
+    (StatusCode::CREATED, state.tickets.generate(jwt.claims.user_id).await)
 }
 
 
 pub async fn revoke_ticket (
+    JWTAuthorize(jwt): JWTAuthorize,
     Query(ticket_query): Query<TicketQuery>,
     State(state): State<Arc<AppState>>
 ) -> Response {
-    let tickets = state.tickets.write().await;
-    match tickets.remove(&ticket_query.ticket) {
-        Some(_) => (StatusCode::OK, Json(ErrorResponse { error: format!("Ticket `{}` has been successfully revoked", &ticket_query.ticket) })).into_response(),
-        None => (StatusCode::BAD_REQUEST, Json(ErrorResponse{ error: "Ticket was not reserved".to_string()})).into_response()
+    match state.tickets.validated_remove(jwt.claims.user_id, &ticket_query.ticket).await {
+        Ok(_) => (StatusCode::OK, Json(ErrorResponse { error: format!("Ticket `{}` has been successfully revoked", &ticket_query.ticket) })).into_response(),
+        Err(err) => (StatusCode::BAD_REQUEST, Json(ErrorResponse{ error: err.to_string() })).into_response()
     }
 }
